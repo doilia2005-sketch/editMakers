@@ -1,73 +1,65 @@
 local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-
-print("Main.client.luau started! script.Name =", script.Name, "script.Parent =", script.Parent and script.Parent.Name)
-print("script.Parent contents:")
-for _, child in (script.Parent and script.Parent:GetChildren() or {}) do
-	print("  -", child.Name, "(", child.ClassName, ")")
-end
 
 local UIController = require(script.Parent:WaitForChild("modules"):WaitForChild("UIController"))
 local CameraController = require(script.Parent:WaitForChild("modules"):WaitForChild("CameraController"))
 local MusicController = require(script.Parent:WaitForChild("modules"):WaitForChild("MusicController"))
+local LocationController = require(script.Parent:WaitForChild("modules"):WaitForChild("LocationController"))
+local ActionController = require(script.Parent:WaitForChild("modules"):WaitForChild("ActionController"))
+local EditSessionController = require(script.Parent:WaitForChild("modules"):WaitForChild("EditSessionController"))
+local ReplayController = require(script.Parent:WaitForChild("modules"):WaitForChild("ReplayController"))
+local BeatSyncController = require(script.Parent:WaitForChild("modules"):WaitForChild("BeatSyncController"))
+local LegacyUIHider = require(script.Parent:WaitForChild("modules"):WaitForChild("LegacyUIHider"))
 
--- Wait for Player to be available
+local SESSION_ACTIONS = {
+	"zoom_in",
+	"zoom_out",
+	"rotate",
+	"teleport",
+	"shake",
+	"low_angle",
+	"jump",
+	"next_spot",
+	"flash",
+}
+
 local player = Players.LocalPlayer
 if not player then
 	player = Players.PlayerAdded:Wait()
 end
 
--- Wait for PlayerGui
 local playerGui = player:WaitForChild("PlayerGui")
 
--- Initialize controllers
+LegacyUIHider.hide(playerGui)
+LegacyUIHider.watch(playerGui)
+LegacyUIHider.disableLegacyScripts(player)
+
 local ui = UIController.new()
-local camera = CameraController.new()
+local camera = CameraController.new(player)
 local music = MusicController.new()
+local location = LocationController.new(player, camera)
+local actions = ActionController.new(player, camera, ui, location)
+local beatSync = BeatSyncController.new(music, ui)
+local replay = ReplayController.new(player, camera, music, ui, actions, beatSync)
+local session = EditSessionController.new(ui, camera, music, replay, player, actions, beatSync)
 
--- Parent the UI to PlayerGui
-local gui = ui:GetGui()
-gui.Parent = playerGui
+ui:GetGui().Parent = playerGui
 
--- Connect Play button
-ui:OnPlayClicked(function()
-	-- Hide play button, show editor menu
-	ui:ShowEditor()
-
-	-- Play random music (only if not already playing)
-	music:PlayRandom()
-
-	-- Activate camera (Scriptable, position at Camera_Point, look at Actor)
-	camera:ActivateCamera()
+task.defer(function()
+	LegacyUIHider.hide(playerGui)
 end)
 
--- Connect zoom in
-ui:OnZoomIn(function()
-	camera:ZoomIn()
+ui:OnRecordClicked(function()
+	session:Begin()
 end)
 
--- Connect zoom out
-ui:OnZoomOut(function()
-	camera:ZoomOut()
+ui:OnAction("stop", function()
+	session:End()
 end)
 
--- Connect rotate 360
-ui:OnRotate(function()
-	camera:Rotate360()
-end)
-
--- Connect stop (returns camera to normal player view)
-ui:OnStop(function()
-	camera:ResetCamera()
-	-- Stop music
-	music:Stop()
-	-- Show play button again so user can restart
-	ui:ShowPlayButton()
-end)
-
--- Connect zoom toggle (sharp zoom in/out)
-ui:OnZoomToggle(function()
-	camera:ToggleZoom()
-end)
+for _, actionName in SESSION_ACTIONS do
+	ui:OnAction(actionName, function()
+		session:RunAction(actionName)
+	end)
+end
 
 print("Edit Battle initialized!")
